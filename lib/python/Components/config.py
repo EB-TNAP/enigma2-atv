@@ -150,6 +150,9 @@ class ConfigElement(object):
 	def tostring(self, value):
 		return str(value)
 
+	def toDisplayString(self, value):
+		return str(value)
+
 	def isChanged(self):
 		sv = self.saved_value
 		if sv is None and self.value == self.default:
@@ -386,7 +389,7 @@ class ConfigAction(ConfigElement):
 # Several customized versions exist for different descriptions.
 #
 class ConfigBoolean(ConfigElement):
-	def __init__(self, default=False, descriptions={False: _("false"), True: _("true")}, graphic=True):
+	def __init__(self, default=False, descriptions={False: _("False"), True: _("True")}, graphic=True):
 		ConfigElement.__init__(self)
 		self.value = self.last_value = self.default = default
 		self.descriptions = descriptions
@@ -406,6 +409,9 @@ class ConfigBoolean(ConfigElement):
 
 	def tostring(self, value):
 		return "true" if value and str(value).lower() in self.trueValues else "false"
+
+	def toDisplayString(self, value):
+		return self.descriptions[True] if value or str(value).lower() in self.trueValues else self.descriptions[False]
 
 	def getText(self):
 		return self.descriptions[self.value]
@@ -436,17 +442,17 @@ class ConfigBoolean(ConfigElement):
 
 class ConfigEnableDisable(ConfigBoolean):
 	def __init__(self, default=False):
-		ConfigBoolean.__init__(self, default=default, descriptions={False: _("disable"), True: _("enable")})
+		ConfigBoolean.__init__(self, default=default, descriptions={False: _("Disable"), True: _("Enable")})
 
 
 class ConfigOnOff(ConfigBoolean):
 	def __init__(self, default=False):
-		ConfigBoolean.__init__(self, default=default, descriptions={False: _("off"), True: _("on")})
+		ConfigBoolean.__init__(self, default=default, descriptions={False: _("Off"), True: _("On")})
 
 
 class ConfigYesNo(ConfigBoolean):
 	def __init__(self, default=False):
-		ConfigBoolean.__init__(self, default=default, descriptions={False: _("no"), True: _("yes")})
+		ConfigBoolean.__init__(self, default=default, descriptions={False: _("No"), True: _("Yes")})
 
 
 # This is the control, and base class, for date and time settings.
@@ -761,6 +767,9 @@ class ConfigSelection(ConfigElement):
 	def tostring(self, val):
 		return val
 
+	def toDisplayString(self, val):
+		return self.description[val]
+
 	def getValue(self):
 		return self._value
 
@@ -881,7 +890,7 @@ class ConfigSelectionNumber(ConfigSelection):
 	value = property(getValue, setValue)
 
 	def getIndex(self):
-		return self.choices.index(self.value)
+		return self.choices.index(str(self.value))
 
 	index = property(getIndex)
 
@@ -917,10 +926,10 @@ class ConfigSequence(ConfigElement):
 	def __init__(self, seperator, limits, default, censor_char=""):
 		ConfigElement.__init__(self)
 		assert isinstance(limits, list) and len(limits[0]) == 2, "limits must be [(min, max),...]-tuple-list"
-		assert censor_char == "" or len(censor_char) == 1, "censor char must be a single char (or \"\")"
-		#assert isinstance(default, list), "default must be a list"
-		#assert isinstance(default[0], int), "list must contain numbers"
-		#assert len(default) == len(limits), "length must match"
+		# assert censor_char == "" or len(censor_char) == 1, "censor char must be a single char (or \"\")"
+		# assert isinstance(default, list), "default must be a list"
+		# assert isinstance(default[0], int), "list must contain numbers"
+		# assert len(default) == len(limits), "length must match"
 
 		self.marked_pos = 0
 		self.seperator = seperator
@@ -1239,11 +1248,11 @@ class ConfigInteger(ConfigSequence):
 
 
 class ConfigPIN(ConfigInteger):
-	def __init__(self, default, len=4, censor=""):
+	def __init__(self, default, pinlength=4, censor=""):
 		assert isinstance(default, int), "[Config] Error: 'ConfigPIN' default must be an integer!"
-		assert censor == "" or len(censor) == 1, "[Config] Error: Censor must be a single char (or \"\")!"
-		ConfigSequence.__init__(self, seperator=":", limits=[(0, (10**len) - 1)], censor_char=censor, default=default)
-		self.len = len
+		# assert censor == "" or len(censor) == 1, "[Config] Error: Censor must be a single char (or \"\")!"
+		ConfigSequence.__init__(self, seperator=":", limits=[(0, (10**pinlength) - 1)], censor_char=censor, default=default)
+		self.len = pinlength
 
 	def getLength(self):
 		return self.len
@@ -1416,7 +1425,7 @@ class ConfigSet(ConfigElement):
 					start = pos
 					end = start + length
 				pos += length
-			return ("mtext", "".join(text), range(start, end))
+			return ("mtext", "".join(text), list(range(start, end)))
 		else:
 			return ("text", " ".join([self.description[x] for x in self.value]))
 
@@ -1637,12 +1646,15 @@ class ConfigText(ConfigElement, NumericalTextInput):
 			print("Broken UTF8!")
 			return self.text
 
-	def setValue(self, val):
-		try:
-			self.text = six.ensure_text(val)
-		except UnicodeDecodeError:
-			self.text = six.ensure_text(val, errors='ignore')
-			print("Broken UTF8!")
+	def setValue(self, value):
+		if value is not None:
+			try:
+				self.text = six.ensure_text(value)
+			except UnicodeDecodeError:
+				self.text = six.ensure_text(value, errors='ignore')
+				print("Broken UTF8!")
+		else:
+			self.text = ""
 
 	value = property(getValue, setValue)
 	_value = property(getValue, setValue)
@@ -1695,6 +1707,8 @@ class ConfigDirectory(ConfigText):
 		if value is None:
 			value = ""
 		ConfigText.setValue(self, value)
+
+	value = property(getValue, setValue)
 
 	def onSelect(self, session):
 		self.allmarked = (self.value != "")

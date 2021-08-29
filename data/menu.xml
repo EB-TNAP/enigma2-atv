@@ -61,7 +61,7 @@
 		<!-- Menu / Settings / Recordings -->
 		<menu weight="10" level="1" text="Recordings &amp; Timeshift" entryID="rec_setup">
 			<id val="rec" />
-			<item weight="10" level="0" text="Recording settings" entryID="recording_setup"><screen module="Recordings" screen="RecordingSettings" /></item>
+			<item weight="10" level="0" text="Recording settings" entryID="recording_setup"><screen module="Recording" screen="RecordingSettings" /></item>
 			<item weight="15" level="0" text="HDMI-IN Recording settings" entryID="hdmirecord_setup" requires="HDMIin"><setup id="HDMIRecord"/></item>
 			<item weight="20" level="0" text="Timeshift settings" entryID="timshift_setup"><screen module="Timeshift" screen="TimeshiftSettings" /></item>
 		</menu>
@@ -95,9 +95,9 @@ self.session.open(RemoteControlCode)
 </code>
 				</item>
 				<item weight="40" level="1" text="Keyboard" entryID="keyboard"><setup id="keyboard" /></item>
-				<item weight="50" level="2" text="OSD 3D Setup" entryID="osd3dsetup" requires="CanChange3DOsd"><screen module="UserInterfacePositioner" screen="OSD3DSetupScreen"/></item>
+				<item weight="50" level="2" text="OSD 3D Setup" entryID="setup_osd3d" requires="CanChange3DOsd"><setup id="osd3d"/></item>
 			</menu>
-			<item weight="70" level="0" text="Language" entryID="language_setup"><screen module="LanguageSelection" /></item>
+			<item weight="70" level="0" text="Language" entryID="locale_setup"><screen module="LocaleSelection" /></item>
 		</menu>
 
 		<!-- Menu / Settings / EPG -->

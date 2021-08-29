@@ -9,7 +9,7 @@ from enigma import eDVBDB, eEPGCache, setTunerTypePriorityOrder, setPreferredTun
 from Components.About import about
 from Components.Harddisk import harddiskmanager
 from Components.config import ConfigSubsection, ConfigYesNo, config, ConfigSelection, ConfigText, ConfigNumber, ConfigSet, ConfigLocations, NoSave, ConfigClock, ConfigInteger, ConfigBoolean, ConfigPassword, ConfigIP, ConfigSlider, ConfigSelectionNumber, ConfigFloat, ConfigDictionarySet, ConfigDirectory
-from Tools.Directories import resolveFilename, SCOPE_HDD, SCOPE_TIMESHIFT, SCOPE_AUTORECORD, SCOPE_SYSETC, defaultRecordingLocation, isPluginInstalled
+from Tools.Directories import resolveFilename, SCOPE_HDD, SCOPE_TIMESHIFT, SCOPE_SYSETC, defaultRecordingLocation, isPluginInstalled, fileContains
 from Components.NimManager import nimmanager
 from Components.RcModel import rc_model
 from Components.ServiceList import refreshServiceList
@@ -67,7 +67,7 @@ def InitUsageConfig():
 	config.usage.showdish = ConfigSelection(default="flashing", choices=[("flashing", _("Flashing")), ("normal", _("Not Flashing")), ("off", _("Off"))])
 	config.usage.multibouquet = ConfigYesNo(default=True)
 	config.usage.maxchannelnumlen = ConfigSelection(default="4", choices=[("1", _("1")), ("2", _("2")), ("3", _("3")), ("4", _("4")), ("5", _("5"))])
-	config.usage.numzaptimeoutmode = ConfigSelection(default="standard", choices=[("standard", _("Standard")), ("userdefined", _("User defined")), ("off", _("off"))])
+	config.usage.numzaptimeoutmode = ConfigSelection(default="standard", choices=[("standard", _("Standard")), ("userdefined", _("User defined")), ("off", _("Off"))])
 	config.usage.numzaptimeout1 = ConfigSlider(default=3000, increment=250, limits=(500, 5000))
 	config.usage.numzaptimeout2 = ConfigSlider(default=1000, increment=250, limits=(0, 5000))
 	config.usage.numzappicon = ConfigYesNo(default=False)
@@ -76,6 +76,24 @@ def InitUsageConfig():
 	config.misc.ecm_info = ConfigYesNo(default=False)
 	config.usage.menu_show_numbers = ConfigYesNo(default=False)
 	config.usage.showScreenPath = ConfigSelection(default="off", choices=[("off", _("None")), ("small", _("Small")), ("large", _("Large"))])
+	if fileContains("/etc/network/interfaces", "iface eth0 inet static") and not fileContains("/etc/network/interfaces", "iface wlan0 inet dhcp") or fileContains("/etc/network/interfaces", "iface wlan0 inet static") and fileContains("/run/ifstate", "wlan0=wlan0"):
+		config.usage.dns = ConfigSelection(default="custom", choices=[
+			("custom", _("Static IP or Custom")),
+			("google", _("Google DNS")),
+			("cloudflare", _("Cloudflare")),
+			("opendns-familyshield", _("OpenDNS FamilyShield")),
+			("opendns-home", _("OpenDNS Home"))
+		])
+	else:
+		config.usage.dns = ConfigSelection(default="dhcp-router", choices=[
+			("dhcp-router", _("DHCP Router")),
+			("custom", _("Static IP or Custom")),
+			("google", _("Google DNS")),
+			("cloudflare", _("Cloudflare")),
+			("opendns-familyshield", _("OpenDNS FamilyShield")),
+			("opendns-home", _("OpenDNS Home"))
+		])
+
 	config.usage.subnetwork = ConfigYesNo(default=True)
 	config.usage.subnetwork_cable = ConfigYesNo(default=True)
 	config.usage.subnetwork_terrestrial = ConfigYesNo(default=True)
@@ -269,70 +287,56 @@ def InitUsageConfig():
 		m = i / 60
 		choicelist.append(("%d" % i, ngettext("%d minute", "%d minutes", m) % m))
 	config.usage.pip_last_service_timeout = ConfigSelection(default="-1", choices=choicelist)
-	if not os.path.exists(resolveFilename(SCOPE_HDD)):
+
+	defaultValue = resolveFilename(SCOPE_HDD)
+	if not os.path.exists(defaultValue):
 		try:
-			os.mkdir(resolveFilename(SCOPE_HDD), 0o755)
-		except:
+			os.mkdir(defaultValue, 0o755)
+		except (IOError, OSError) as err:
 			pass
-	config.usage.default_path = ConfigText(default=resolveFilename(SCOPE_HDD))
-	if not config.usage.default_path.value.endswith('/'):
-		tmpvalue = config.usage.default_path.value
-		config.usage.default_path.setValue(tmpvalue + '/')
-		config.usage.default_path.save()
+	config.usage.default_path = ConfigSelection(default=defaultValue, choices=[(defaultValue, defaultValue)])
+	config.usage.default_path.load()
+	if config.usage.default_path.saved_value:
+		savedValue = os.path.join(config.usage.default_path.saved_value, "")
+		if savedValue and savedValue != defaultValue:
+			config.usage.default_path.setChoices([(defaultValue, defaultValue), (savedValue, savedValue)], default=defaultValue)
+			config.usage.default_path.value = savedValue
+	config.usage.default_path.save()
 
-	def defaultpathChanged(configElement):
-		tmpvalue = config.usage.default_path.value
+	choiceList = [("<default>", "<default>"), ("<current>", "<current>"), ("<timer>", "<timer>")]
+	config.usage.timer_path = ConfigSelection(default="<default>", choices=choiceList)
+	config.usage.timer_path.load()
+	if config.usage.timer_path.saved_value:
+		savedValue = config.usage.timer_path.saved_value if config.usage.timer_path.saved_value.startswith("<") else os.path.join(config.usage.timer_path.saved_value, "")
+		if savedValue and savedValue not in choiceList:
+			config.usage.timer_path.setChoices(choiceList + [(savedValue, savedValue)], default="<default>")
+			config.usage.timer_path.value = savedValue
+	config.usage.timer_path.save()
+
+	config.usage.instantrec_path = ConfigSelection(default="<default>", choices=choiceList)
+	config.usage.instantrec_path.load()
+	if config.usage.instantrec_path.saved_value:
+		savedValue = config.usage.instantrec_path.saved_value if config.usage.instantrec_path.saved_value.startswith("<") else os.path.join(config.usage.instantrec_path.saved_value, "")
+		if savedValue and savedValue not in choiceList:
+			config.usage.instantrec_path.setChoices(choiceList + [(savedValue, savedValue)], default="<default>")
+			config.usage.instantrec_path.value = savedValue
+	config.usage.instantrec_path.save()
+
+	defaultValue = resolveFilename(SCOPE_TIMESHIFT)
+	if not os.path.exists(defaultValue):
 		try:
-			if not os.path.exists(tmpvalue):
-				os.system("mkdir -p %s" % tmpvalue)
-		except:
-			print("Failed to create recording path: %s" % tmpvalue)
-		if not config.usage.default_path.value.endswith('/'):
-			config.usage.default_path.setValue(tmpvalue + '/')
-			config.usage.default_path.save()
-	config.usage.default_path.addNotifier(defaultpathChanged, immediate_feedback=False)
-
-	config.usage.timer_path = ConfigText(default="<default>")
-	config.usage.autorecord_path = ConfigText(default="<default>")
-	config.usage.instantrec_path = ConfigText(default="<default>")
-
-	if not os.path.exists(resolveFilename(SCOPE_TIMESHIFT)):
-		try:
-			os.mkdir(resolveFilename(SCOPE_TIMESHIFT), 0o755)
-		except:
+			os.mkdir(defaultValue, 0o755)
+		except (IOError, OSError) as err:
 			pass
-	config.usage.timeshift_path = ConfigText(default=resolveFilename(SCOPE_TIMESHIFT))
-	if not config.usage.default_path.value.endswith('/'):
-		tmpvalue = config.usage.timeshift_path.value
-		config.usage.timeshift_path.setValue(tmpvalue + '/')
-		config.usage.timeshift_path.save()
-
-	def timeshiftpathChanged(configElement):
-		if not config.usage.timeshift_path.value.endswith('/'):
-			tmpvalue = config.usage.timeshift_path.value
-			config.usage.timeshift_path.setValue(tmpvalue + '/')
-			config.usage.timeshift_path.save()
-	config.usage.timeshift_path.addNotifier(timeshiftpathChanged, immediate_feedback=False)
-	config.usage.allowed_timeshift_paths = ConfigLocations(default=[resolveFilename(SCOPE_TIMESHIFT)])
-
-	if not os.path.exists(resolveFilename(SCOPE_AUTORECORD)):
-		try:
-			os.mkdir(resolveFilename(SCOPE_AUTORECORD), 0o755)
-		except:
-			pass
-	config.usage.autorecord_path = ConfigText(default=resolveFilename(SCOPE_AUTORECORD))
-	if not config.usage.default_path.value.endswith('/'):
-		tmpvalue = config.usage.autorecord_path.value
-		config.usage.autorecord_path.setValue(tmpvalue + '/')
-		config.usage.autorecord_path.save()
-
-	def autorecordpathChanged(configElement):
-		if not config.usage.autorecord_path.value.endswith('/'):
-			tmpvalue = config.usage.autorecord_path.value
-			config.usage.autorecord_path.setValue(tmpvalue + '/')
-			config.usage.autorecord_path.save()
-	config.usage.autorecord_path.addNotifier(autorecordpathChanged, immediate_feedback=False)
-	config.usage.allowed_autorecord_paths = ConfigLocations(default=[resolveFilename(SCOPE_AUTORECORD)])
+	config.usage.timeshift_path = ConfigSelection(default=defaultValue, choices=[(defaultValue, defaultValue)])
+	config.usage.timeshift_path.load()
+	if config.usage.timeshift_path.saved_value:
+		savedValue = os.path.join(config.usage.timeshift_path.saved_value, "")
+		if savedValue and savedValue != defaultValue:
+			config.usage.timeshift_path.setChoices([(defaultValue, defaultValue), (savedValue, savedValue)], default=defaultValue)
+			config.usage.timeshift_path.value = savedValue
+	config.usage.timeshift_path.save()
+	config.usage.allowed_timeshift_paths = ConfigLocations(default=[defaultValue])
 
 	config.usage.movielist_trashcan = ConfigYesNo(default=True)
 	config.usage.movielist_trashcan_network_clean = ConfigYesNo(default=False)
@@ -357,6 +361,12 @@ def InitUsageConfig():
 		("simple", _("Simple")),
 		("intermediate", _("Intermediate")),
 		("expert", _("Expert"))])
+
+	config.usage.setupShowDefault = ConfigSelection(default="newline", choices=[
+		("", _("Don't show default")),
+		("spaces", _("Show default after description")),
+		("newline", _("Show default on new line"))
+	])
 
 	config.usage.helpSortOrder = ConfigSelection(default="headings+alphabetic", choices=[
 		("headings+alphabetic", _("Alphabetical under headings")),
@@ -592,7 +602,7 @@ def InitUsageConfig():
 		("30000", "30 " + _("seconds")),
 		("60000", "1 " + _("minute")),
 		("300000", "5 " + _("minutes")),
-		("noscrolling", _("off"))])
+		("noscrolling", _("Off"))])
 	config.usage.lcd_scroll_speed = ConfigSelection(default="300", choices=[
 		("500", _("slow")),
 		("300", _("normal")),
@@ -1111,7 +1121,6 @@ def InitUsageConfig():
 	config.timeshift.showinfobar = ConfigYesNo(default=True)
 	config.timeshift.stopwhilerecording = ConfigYesNo(default=False)
 	config.timeshift.favoriteSaveAction = ConfigSelection([("askuser", _("Ask user")), ("savetimeshift", _("Save and stop")), ("savetimeshiftandrecord", _("Save and record")), ("noSave", _("Don't save"))], "askuser")
-	config.timeshift.autorecord = ConfigYesNo(default=False)
 	config.timeshift.isRecording = NoSave(ConfigYesNo(default=False))
 	config.timeshift.timeshiftMaxHours = ConfigSelectionNumber(min=1, max=999, stepwidth=1, default=12, wraparound=True)
 	config.timeshift.timeshiftMaxEvents = ConfigSelectionNumber(min=1, max=999, stepwidth=1, default=12, wraparound=True)
